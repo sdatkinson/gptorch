@@ -11,7 +11,6 @@ import torch
 import numpy as np
 
 from .. import kernels
-from ..model import Param
 from .. import likelihoods
 from ..functions import cholesky, inverse, lt_log_determinant, trtrs
 from ..util import TensorType
@@ -79,7 +78,7 @@ class GPR(GPModel):
 
         return (
             self.kernel.K(x)
-            + (self.likelihood.variance.transform())
+            + (self.likelihood.variance)
             .expand(num_input, num_input)
             .diag()
             .diag()

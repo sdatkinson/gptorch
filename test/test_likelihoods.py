@@ -11,7 +11,7 @@ from torch.autograd import Variable
 import pytest
 
 from gptorch import likelihoods
-import gptorch.model
+from gptorch.core import Parameter
 from gptorch.util import TensorType
 
 
@@ -34,11 +34,11 @@ class TestGaussian(object):
         lik = self._standard_likelihood()
 
         # Type
-        assert isinstance(lik.variance, gptorch.model.Param)
+        assert isinstance(lik.variance, Parameter)
 
         # Value
-        print(type(lik.variance.transform()))
-        assert lik.variance.transform().data.numpy() == pytest.approx(
+        print(type(lik.variance))
+        assert lik.variance.data.numpy() == pytest.approx(
             self._expected_likelihood_variance
         )
 

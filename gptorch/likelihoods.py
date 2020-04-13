@@ -14,18 +14,17 @@ variational inference.
 import abc
 from math import pi
 
-from torch.nn import Parameter
 import torch
 from torch import distributions
 
-from .model import Model, Param
+from .core import Module, Parameter
 from .settings import DefaultPositiveTransform
 from .util import torch_dtype
 
 from .util import TensorType
 
 
-class Likelihood(Model):
+class Likelihood(Module):
     """
     Probabilities that conventionally factorize across data.
     Typically used as the "second stage" of a GP model that goes 
@@ -85,7 +84,7 @@ class Gaussian(Likelihood):
 
     def __init__(self, variance=1.0):
         super(Gaussian, self).__init__()
-        self.variance = Param(
+        self.variance = Parameter(
             TensorType([variance]), transform=DefaultPositiveTransform()
         )
 
@@ -99,7 +98,7 @@ class Gaussian(Likelihood):
         :param Y: Targets where we want to compute the log-pdf
         :type Y: TensorType
         """
-        return distributions.Normal(F, torch.sqrt(self.variance.transform())).log_prob(
+        return distributions.Normal(F, torch.sqrt(self.variance)).log_prob(
             Y
         )
 
@@ -117,10 +116,10 @@ class Gaussian(Likelihood):
         """
         # TODO: consider mulit-output case
         # stupid syntax - expecting broadcasting in PyTorch
-        return mean_f, var_f + self.variance.transform().expand_as(var_f)
+        return mean_f, var_f + self.variance.expand_as(var_f)
 
     def predict_mean_covariance(self, mean_f, cov_f):
-        return mean_f, cov_f + self.variance.transform().expand_as(cov_f).diag().diag()
+        return mean_f, cov_f + self.variance.expand_as(cov_f).diag().diag()
 
     def propagate_log(self, qf, targets):
         if not isinstance(qf, torch.distributions.Normal) and not isinstance(
@@ -135,7 +134,7 @@ class Gaussian(Likelihood):
                 "Targets (%i) and q(f) (%i) have mismatch in size" % (n, mu.nelement())
             )
 
-        sigma_y = self.variance.transform()
+        sigma_y = self.variance
 
         return -0.5 * (
             n * (torch.log(TensorType([2.0 * pi])).to(sigma_y.device) 

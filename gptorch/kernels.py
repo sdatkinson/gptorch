@@ -10,8 +10,8 @@ import torch
 import numpy as np
 
 from .util import as_tensor, squared_distance, TensorType, torch_dtype
-from .model import Model
-from .param import Param
+from .core import Module
+from .core import Parameter
 from .settings import DefaultPositiveTransform
 
 
@@ -25,7 +25,7 @@ def _k_shape(X, X2):
     return (X.size(0),) * 2 if X2 is None else (X.size(0), X2.size(0))
 
 
-class Kernel(Model):
+class Kernel(Module):
     """
     Base class for kernels
     """
@@ -72,12 +72,12 @@ class Static(Kernel):
 
     def __init__(self, input_dim, variance=1.0):
         super().__init__(input_dim)
-        self.variance = Param(
+        self.variance = Parameter(
             TensorType([variance]), transform=DefaultPositiveTransform()
         )
 
     def Kdiag(self, X):
-        return self.variance.transform().expand(X.size(0))
+        return self.variance.expand(X.size(0))
 
 
 class White(Static):
@@ -87,7 +87,7 @@ class White(Static):
 
     def K(self, X, X2=None, presliced=False):
         if X2 is None:
-            return self.variance.transform().expand(X.size(0)).diag()
+            return self.variance.expand(X.size(0)).diag()
         else:
             return torch.zeros(*_k_shape(X, X2), dtype=torch_dtype)
 
@@ -98,7 +98,7 @@ class Constant(Static):
     """
 
     def K(self, X, X2=None, presliced=False):
-        return self.variance.transform().expand(*_k_shape(X, X2))
+        return self.variance.expand(*_k_shape(X, X2))
 
 
 class Bias(Constant):
@@ -124,7 +124,7 @@ class Stationary(Kernel):
                 per dimension (ARD=True) or a single length scale (ARD=False).
         """
         super(Stationary, self).__init__(input_dim)
-        self.variance = Param(
+        self.variance = Parameter(
             TensorType([variance]), transform=DefaultPositiveTransform()
         )
         self.ARD = ARD
@@ -136,13 +136,13 @@ class Stationary(Kernel):
             else:
                 length_scales = length_scales * np.ones(input_dim)
 
-            self.length_scales = Param(
+            self.length_scales = Parameter(
                 TensorType(length_scales), transform=DefaultPositiveTransform()
             )
         else:
             if length_scales is None:
                 length_scales = 1.0
-            self.length_scales = Param(
+            self.length_scales = Parameter(
                 TensorType([length_scales]), transform=DefaultPositiveTransform()
             )
 
@@ -151,10 +151,10 @@ class Stationary(Kernel):
         Returns the SCALED squared distance between X and X2.
         """
         return (
-            squared_distance(X / self.length_scales.transform())
+            squared_distance(X / self.length_scales)
             if X2 is None
             else squared_distance(
-                X / self.length_scales.transform(), X2 / self.length_scales.transform()
+                X / self.length_scales, X2 / self.length_scales
             )
         )
 
@@ -176,7 +176,7 @@ class Stationary(Kernel):
             # input is a data matrix; each row represents one instance
             X = as_tensor(X)
         # return a vector
-        return self.variance.transform().expand(X.size(0))
+        return self.variance.expand(X.size(0))
 
 
 class Exp(Stationary):
@@ -187,7 +187,7 @@ class Exp(Stationary):
     """
 
     def K(self, X, X2=None):
-        return self.variance.transform() * torch.exp(-self.dist(X, X2))
+        return self.variance * torch.exp(-self.dist(X, X2))
 
 
 class Matern12(Exp):
@@ -198,7 +198,7 @@ class Matern32(Stationary):
     def K(self, X, X2=None):
         r = self.dist(X, X2)
         r3 = TensorType([np.sqrt(3.0)]).to(r.device) * r
-        return self.variance.transform() * (1.0 + r3) * torch.exp(-r3)
+        return self.variance * (1.0 + r3) * torch.exp(-r3)
 
 
 class Matern52(Stationary):
@@ -206,7 +206,7 @@ class Matern52(Stationary):
         r = self.dist(X, X2)
         s5 = TensorType([np.sqrt(5.0)]).to(r.device)
         return (
-            self.variance.transform()
+            self.variance
             * (1.0 + s5 * r + 5.0 / 3.0 * r * r)
             * torch.exp(-s5 * r)
         )
@@ -219,7 +219,7 @@ class Rbf(Stationary):
 
     def K(self, X, X2=None):
         r2 = self.squared_dist(X, X2)
-        return self.variance.transform() * torch.exp(-r2 / 2.0)
+        return self.variance * torch.exp(-r2 / 2.0)
 
 
 SquaredExponential = Rbf
@@ -232,7 +232,7 @@ class Periodic(Stationary):
     """
 
     def K(self, X, X2=None):
-        return self.variance.transform() * torch.cos(self.dist(X, X2))
+        return self.variance * torch.cos(self.dist(X, X2))
 
 
 class Linear(Kernel):
@@ -251,18 +251,18 @@ class Linear(Kernel):
         super().__init__(input_dim)
 
         variance, self.ARD = self._validate_ard_shape(variance, ARD)
-        self.variance = Param(
+        self.variance = Parameter(
             TensorType(variance), transform=DefaultPositiveTransform()
         )
 
     def K(self, X, X2=None):
         if X2 is None:
-            return torch.mm(X * self.variance.transform(), X.t())
+            return torch.mm(X * self.variance, X.t())
         else:
-            return torch.mm(X * self.variance.transform(), X2.t())
+            return torch.mm(X * self.variance, X2.t())
 
     def Kdiag(self, X):
-        return torch.sum(X * X * self.variance.transform(), 1)
+        return torch.sum(X * X * self.variance, 1)
 
 
 class Combination(Kernel):

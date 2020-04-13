@@ -12,7 +12,7 @@ import numpy as np
 from torch.utils.data import TensorDataset, DataLoader
 from torch.distributions.transforms import LowerCholeskyTransform
 
-from ..model import Param
+from ..core import Parameter
 from ..functions import cholesky, trtrs
 from ..mean_functions import Zero
 from ..likelihoods import Gaussian
@@ -63,7 +63,7 @@ class _InducingPointsGP(GPModel):
             # inducing_points = TensorType(x[indices])
 
         # Z stands for inducing input points as standard in the literature
-        self.Z = Param(as_tensor(inducing_points))
+        self.Z = Parameter(as_tensor(inducing_points))
 
     @property
     def num_inducing(self) -> int:
@@ -130,22 +130,22 @@ class VFE(_InducingPointsGP):
         L = cholesky(Kuu)
 
         A = trtrs(Kuf, L)
-        AAT = A @ A.t() / self.likelihood.variance.transform().expand_as(Kuu)
+        AAT = A @ A.t() / self.likelihood.variance.expand_as(Kuu)
         B = AAT + torch.eye(num_inducing, dtype=torch_dtype).to(AAT.device)
         LB = cholesky(B)
         # divide variance at the end
-        c = trtrs(A @ err, LB) / self.likelihood.variance.transform()
+        c = trtrs(A @ err, LB) / self.likelihood.variance
 
         # Evidence lower bound
         elbo = TensorType([-0.5 * d_out * num_data * np.log(2 * np.pi)]).to(c.device)
         elbo -= d_out * LB.diag().log().sum()
         elbo -= (
-            0.5 * d_out * num_data * self.likelihood.variance.transform().log()
+            0.5 * d_out * num_data * self.likelihood.variance.log()
         )
         elbo -= (
             0.5
             * (err.pow(2).sum() + d_out * Kff_diag.sum())
-            / self.likelihood.variance.transform()
+            / self.likelihood.variance
         )
         elbo += 0.5 * c.pow(2).sum()
         elbo += 0.5 * d_out * AAT.diag().sum()
@@ -174,11 +174,11 @@ class VFE(_InducingPointsGP):
         Kus = self.kernel.K(z, x_new)
         L = cholesky(Kuu)
         A = trtrs(Kuf, L)
-        AAT = A @ A.t() / self.likelihood.variance.transform().expand_as(Kuu)
+        AAT = A @ A.t() / self.likelihood.variance.expand_as(Kuu)
         B = AAT + torch.eye(num_inducing, dtype=torch_dtype).to(AAT.device)
         LB = cholesky(B)
         # divide variance at the end
-        c = trtrs(A @ err, LB) / self.likelihood.variance.transform()
+        c = trtrs(A @ err, LB) / self.likelihood.variance
         tmp1 = trtrs(Kus, L)
         tmp2 = trtrs(tmp1, LB)
         mean = tmp2.t() @ c
@@ -286,7 +286,7 @@ class SVGP(_InducingPointsGP):
 
         mu_xu = self.mean_function(self.Z)  # Prior mean
         qu_mean = self.induced_output_mean + mu_xu
-        qu_lc = self.induced_output_chol_cov.transform()
+        qu_lc = self.induced_output_chol_cov
         # Each output dimension has its own Multivariate normal (different
         # means, shared covariance); the joint distribution is the product
         # across output dimensions.
@@ -332,7 +332,7 @@ class SVGP(_InducingPointsGP):
         mean -= self.mean_function(self.Z)
         chol_cov = cholesky(cov)
 
-        return Param(mean), Param(chol_cov, transform=LowerCholeskyTransform())
+        return Parameter(mean), Parameter(chol_cov, transform=LowerCholeskyTransform())
 
     def _predict(self, x_new: TensorType, diag=True, chol_kuu=None, **kwargs):
         """
@@ -359,7 +359,7 @@ class SVGP(_InducingPointsGP):
         kuf = self.kernel.K(self.Z, x_new)
         alpha = trtrs(kuf, chol_kuu).t()
         # beta @ beta.t() = inv(L) @ S @ inv(L'), S=post cov of induced outs
-        beta = trtrs(self.induced_output_chol_cov.transform(), chol_kuu)
+        beta = trtrs(self.induced_output_chol_cov, chol_kuu)
         mu_x = self.mean_function(x_new)
 
         # Remember: induced_output_mean doesn't include mean function, so no

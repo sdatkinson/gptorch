@@ -10,7 +10,7 @@ import torch
 from torch.distributions.transforms import ComposeTransform
 
 
-class Param(torch.nn.Parameter):
+class Parameter(torch.nn.Parameter):
     """
     Customized Parameter class extending the PyTorch Parameter class.
     Its main purpose is to include the following additional functionality:
@@ -21,13 +21,13 @@ class Param(torch.nn.Parameter):
     """
 
     def __new__(cls, data=None, requires_grad=True, transform=None, prior=None):
-        transform = Param._validate_transform(transform)
+        transform = Parameter._validate_transform(transform)
         data = transform.inv(data)
         return super().__new__(cls, data, requires_grad=requires_grad)
 
     def __init__(self, data, requires_grad=True, transform=None, prior=None):
         super().__init__()
-        transform = Param._validate_transform(transform)
+        transform = Parameter._validate_transform(transform)
         self._transform = transform
         self.prior = prior
 

@@ -18,8 +18,8 @@ base_path = os.path.join(os.path.dirname(__file__), "..")
 if not base_path in sys.path:
     sys.path.append(base_path)
 
-from gptorch.model import Model
-from gptorch.param import Param
+from gptorch.core import Module
+from gptorch.core import Parameter
 from gptorch.util import TensorType, torch_dtype
 
 zeros = partial(torch.zeros, dtype=torch_dtype)
@@ -30,14 +30,14 @@ def _standard_normal(*shape):
     return Normal(zeros(*shape), ones(*shape))
 
 
-class _MockModel(Model):
+class _MockModule(Module):
     """
     Mockup model that has a log-likelihood implemented
     """
 
     def __init__(self):
         super().__init__()
-        self.z = Param(zeros(1), prior=_standard_normal(1))
+        self.z = Parameter(zeros(1), prior=_standard_normal(1))
         self.targets = zeros(1)  # Mock training data
 
     def log_likelihood(self):
@@ -47,48 +47,48 @@ class _MockModel(Model):
         return -(self.log_likelihood() + self.log_prior())
 
 
-class TestModel(object):
+class TestModule(object):
     """
-    Tests for the Model class
+    Tests for the Module class
     """
 
-    def test_get_param_array(self):
+    def test_get_raw_parameters(self):
 
-        model = _MockModel()
-        param_array = model._get_param_array()
+        model = _MockModule()
+        param_array = model.get_raw_parameters()
 
-    def test_set_param_array(self):
+    def test_set_raw_parameters(self):
 
-        model = _MockModel()
-        param_array = model._get_param_array()
+        model = _MockModule()
+        param_array = model.get_raw_parameters()
         param_array += 1.0
-        model._set_parameters(param_array)
+        model.set_raw_parameters(param_array)
 
     def test_loss_and_grad(self):
-        model = _MockModel()
-        param_array = model._get_param_array()
+        model = _MockModule()
+        param_array = model.get_raw_parameters()
         loss, grad = model._loss_and_grad(param_array)
 
     def test_extract_params(self):
 
-        model = _MockModel()
+        model = _MockModule()
         params = model.extract_params()
 
     def test_expand_params(self):
 
-        model = _MockModel()
+        model = _MockModule()
         params = model.extract_params()
         model.expand_params(params)
 
     def test_log_likelihood(self):
-        model = _MockModel()
+        model = _MockModule()
 
         target = zeros(1)
         log_likelihood = model.log_likelihood()
 
         assert isinstance(log_likelihood, TensorType)
         assert log_likelihood.ndimension() == 0
-        # See _MockModel to verify target is 0.0, likelihood is a standard normal.
+        # See _MockModule to verify target is 0.0, likelihood is a standard normal.
         assert log_likelihood.item() == _standard_normal(1).log_prob(zeros(1)).sum().item()
 
     def test_log_prior(self):
@@ -97,16 +97,16 @@ class TestModel(object):
         Only one parameter, it's 1D, and it has a prior.
         """
 
-        model = _MockModel()
+        model = _MockModule()
         
         log_prior = model.log_prior()
         assert isinstance(log_prior, TensorType)
         assert log_prior.ndimension() == 0
-        # See _MockModel:
+        # See _MockModule:
         assert log_prior.item() == _standard_normal(1).log_prob(zeros(1)).sum().item()
 
     def test_loss(self):
-        model = _MockModel()
+        model = _MockModule()
 
         loss = model.loss()
 

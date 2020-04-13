@@ -14,7 +14,7 @@ from scipy.optimize import minimize
 from .. import likelihoods
 from ..functions import cholesky
 from ..mean_functions import Zero
-from ..model import Model
+from ..core import Module
 from ..util import TensorType, as_tensor, torch_dtype
 
 
@@ -55,7 +55,7 @@ def input_as_tensor(predict_func):
     return predict
 
 
-class GPModel(Model):
+class GPModel(Module):
     """
     The base class for GP models
     """
@@ -310,7 +310,7 @@ class GPModel(Model):
 
         result = minimize(
             fun=self._loss_and_grad,
-            x0=self._get_param_array(),
+            x0=self.get_raw_parameters(),
             method=method,
             jac=True,
             tol=tol,

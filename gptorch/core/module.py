@@ -13,9 +13,10 @@ import numpy as np
 from time import time
 from warnings import warn
 
-from .functions import cholesky
-from .param import Param
-from .util import TensorType
+from ..functions import cholesky
+from ..util import TensorType
+
+from .parameter import Parameter
 
 
 def _addindent(s_, numSpaces):
@@ -30,14 +31,12 @@ def _addindent(s_, numSpaces):
     return s
 
 
-class Model(torch.nn.Module):
+class Module(torch.nn.Module):
     """
-    Customized Model class for all GP objects
+    Customized Module with:
+    * Parameter transforms are handled transparently
+    * Log prior over parameters that have them.
     """
-
-    def forward(self):
-        return None
-
     def __repr__(self):
         tmpstr = self.__class__.__name__ + " (\n"
         for name, param in self._parameters.items():
@@ -49,13 +48,25 @@ class Model(torch.nn.Module):
         tmpstr = tmpstr + ")" + "\n"
         return tmpstr
 
+    def __getattr__(self, name):
+        value = super().__getattr__(name)
+        if isinstance(value, Parameter):
+            value = value.transform()
+        return value
+
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+
     # Three functions wrap the scipy.optimize.minimize
     # get_param_array
     # set_parameters
     # loss_and_grad
-    def _get_param_array(self):
-        """Returns a 1D array by flattening and concatenating all the parameters
+    def get_raw_parameters(self):
+        """
+        Returns a 1D array by flattening and concatenating all the parameters
         in the model.
+
+        Only includes the ones that require grads (presumably for optimization)
         """
         param_array = []
         for param in self.parameters():
@@ -64,7 +75,7 @@ class Model(torch.nn.Module):
 
         return np.concatenate(param_array)
 
-    def _set_parameters(self, param_array):
+    def set_raw_parameters(self, param_array):
         """Set the parameters from a parameter array in the format of
         the return of get_param_array().
         """
@@ -101,7 +112,7 @@ class Model(torch.nn.Module):
         """
 
         # 1) set parameters of the model from a 1D param_array
-        self._set_parameters(param_array)
+        self.set_raw_parameters(param_array)
         # print(self)
         for name, param in self.named_parameters():
             # param.grad will be None if either (1) this is the first time we've
@@ -148,7 +159,7 @@ class Model(torch.nn.Module):
             args (tuple of TensorTypes): (Get from self.extract_params())
         """
         for arg, (param_name, param) in zip(args, self.named_parameters()):
-            if isinstance(arg, Param):
+            if isinstance(arg, Parameter):
                 param.data = arg.data
             elif isinstance(arg, np.ndarray):
                 raise NotImplementedError(
@@ -172,7 +183,7 @@ class Model(torch.nn.Module):
                     val = param.transform()
                 else:
                     val = param.data
-                log_prior += param.prior.log_prob(val).sum()
+                log_prior = log_prior + param.prior.log_prob(val).sum()
 
         return log_prior
 
